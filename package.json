@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-addir",
   "version": "0.1.0",
-  "description": "Multi-directory workspace associations for DeepSeek Harness, inspired by Codex --add-dir and Antigravity. · 给工作区关联额外目录（Codex --add-dir / Antigravity 式多根工作区），在工作区菜单里图形化管理。",
+  "description": "Multi-directory workspaces for DeepSeek Harness — attach extra directories and manage them in the GUI. · 给工作区关联额外目录（Codex --add-dir / Antigravity 式），在界面里图形化管理。",
   "keywords": [
     "deepseek",
     "harness",
