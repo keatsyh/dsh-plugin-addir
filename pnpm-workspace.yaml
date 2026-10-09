@@ -1,0 +1,4 @@
+# Install scripts that need an explicit decision. koffi ships prebuilt binaries
+# and is only reachable through optional DSH host extras, so its scripts stay off.
+allowBuilds:
+  koffi: false
