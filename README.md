@@ -18,6 +18,16 @@
 - [specs] `/repo/specs` [Read-Only]
 ```
 
+## 界面
+
+工作区行的「⋯」→「编辑」：
+
+![工作区菜单](assets/workspace-menu.png)
+
+弹窗里改名字、添加/移除关联文件夹、勾只读；「添加文件夹」直接调系统原生目录选择器，保存后按工作区持久化：
+
+![编辑项目](assets/workspace-editor.png)
+
 ## 安装
 
 ```sh
