@@ -39,7 +39,7 @@
 - 📁 **多根目录关联（Multi-Root Workspaces）**  
   支持为任意工作区挂载多个额外文件夹，为每个目录配置易记的别名（Alias）、描述信息及只读（Read-Only）标记。
 - 🧠 **上下文动态注入（Context Injection）**  
-  每轮对话自动将当前生效的目录树注入给大模型上下文。智能体可直接理解 `[别名]/path` 或 `别名:path` 路径简写。
+  目录表作为运行时上下文注入：会话开始时一份，仅在目录增删或只读标记变化时更新，不会逐步/逐轮重复追加。智能体可直接理解 `[别名]/path` 或 `别名:path` 路径简写。
 - 🛡️ **细粒度只读防护（Read-Only Protection）**  
   勾选 `只读` 的目录将被文件工具守卫拦截 `write` / `edit` 操作，彻底避免智能体误改公共依赖或文档。
 - 🖥️ **无缝原生 UI（Native GUI Integration）**  
@@ -67,7 +67,7 @@
 
 ## 注入到模型的上下文示例
 
-启用 `enableContextInjection` 后，插件会在每轮对话自动向大模型注入当前工作区的生效目录表：
+启用 `enableContextInjection` 后，插件会把当前工作区的生效目录表作为运行时上下文注入。智能体循环只保留一份快照，只有目录表内容变化时才追加新的一份，因此同一轮内的多次工具调用不会重复注入：
 
 ```markdown
 # Active Workspace Directories
@@ -134,7 +134,7 @@ dsh plugin --profile web add "link:$PWD"
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `enableTools` | `boolean` | `true` | 是否向智能体暴露 `addir_*` 工具（允许模型自己增删目录） |
-| `enableContextInjection` | `boolean` | `true` | 是否在每轮对话开始前向系统提示词注入工作区目录表 |
+| `enableContextInjection` | `boolean` | `true` | 是否将工作区目录表作为运行时上下文注入；目录表不变时不会重复注入 |
 | `enforceReadOnly` | `boolean` | `true` | 是否在底层工具拦截对标记为只读目录的文件写入与编辑 |
 | `defaultDirectories` | `Array` | `[]` | 启动时预先关联的静态目录列表（包含 `path`, `alias`, `description`, `readOnly`） |
 

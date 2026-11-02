@@ -39,7 +39,7 @@ By default, a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness
 - 📁 **Multi-Root Workspaces**  
   Associate multiple external folders with any workspace. Configure clean aliases, descriptions, and read-only flags for each.
 - 🧠 **Dynamic Context Injection**  
-  Automatically injects the active workspace directories into model prompt context on each turn. The agent recognizes paths like `[alias]/path` or `alias:path`.
+  Injects the active workspace directory table as runtime context once and re-sends it only when the set changes (directories added, removed, or read-only flags toggled). The agent recognizes paths like `[alias]/path` or `alias:path`.
 - 🛡️ **Fine-Grained Read-Only Protection**  
   Intercepts `write` and `edit` file tool calls for directories marked `readOnly`, preventing accidental modifications to core libraries or specs.
 - 🖥️ **Seamless Native GUI Integration**  
@@ -67,7 +67,7 @@ Rename the workspace, select folders using the **system native directory picker*
 
 ## Context Injected into the Model
 
-When `enableContextInjection` is enabled, the plugin automatically appends active directory information to the model's system prompt:
+When `enableContextInjection` is enabled, the plugin contributes the active directory table as runtime context. The agent loop keeps one snapshot per conversation and appends a new one only when the table changes, so repeated steps and turns do not duplicate it:
 
 ```markdown
 # Active Workspace Directories
@@ -134,7 +134,7 @@ Sensible defaults are provided out of the box. You can adjust them directly in t
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `enableTools` | `boolean` | `true` | Expose `addir_*` tools to the agent (permitting dynamic directory discovery/linking) |
-| `enableContextInjection` | `boolean` | `true` | Inject active directories table into the prompt context before each turn |
+| `enableContextInjection` | `boolean` | `true` | Contribute the active directory table as runtime context; it is re-sent only when the table changes |
 | `enforceReadOnly` | `boolean` | `true` | Intercept write/edit operations inside directories marked as read-only |
 | `defaultDirectories` | `Array` | `[]` | Static directories linked on startup (`path`, `alias`, `description`, `readOnly`) |
 

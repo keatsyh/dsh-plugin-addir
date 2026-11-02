@@ -50,8 +50,21 @@ describe('WorkspaceDirectoriesProvider (dsh-plugin-addir) integration', () => {
     expect(sub?.path).toBe(subDir)
   })
 
-  it('triggers agent/pre-step and enriches messages', async () => {
+  it('registers one stable runtime-context table for the session directories', async () => {
     const ctx = new Context()
+    const registrations: Array<{
+      name: string
+      order: number
+      required?: boolean
+      interpolate?: boolean
+      text: (context: { agent?: unknown }) => string
+    }> = []
+    ctx.provide('systemPrompt', {
+      context: (entry: typeof registrations[number]) => {
+        registrations.push(entry)
+        return () => {}
+      },
+    })
     await ctx.plugin(WorkspaceDirectoriesProvider, {
       defaultDirectories: [
         { path: subDir, alias: 'sub-service' },
@@ -60,40 +73,43 @@ describe('WorkspaceDirectoriesProvider (dsh-plugin-addir) integration', () => {
       enableContextInjection: true,
     })
 
-    const mockAgent = {
-      session: {
-        id: 'test-agent-session',
-        header: {
-          cwd: mainDir,
-        },
-      },
-    }
+    // One contribution, not one message per step: the loop re-sends the
+    // snapshot only when this text changes.
+    expect(registrations).toHaveLength(1)
+    const registration = registrations[0]!
+    expect(registration.name).toBe('working-directories:linked')
+    expect(registration.required).toBe(true)
+    expect(registration.interpolate).toBe(false)
 
-    // Simulate pre-step waterfall dispatch
-    const originalMessages = [
-      { id: 'msg-1', content: [{ type: 'text', text: 'Hello' }], source: { kind: 'user' } },
-    ]
+    const agent = { session: { id: 'test-agent-session', header: { cwd: mainDir } } }
+    const table = registration.text({ agent })
+    expect(table).toContain('# Active Workspace Directories')
+    expect(table).toContain('[sub-service]')
+    expect(registration.text({ agent })).toBe(table)
+    expect(registration.text({})).toBe('')
+  })
 
+  it('leaves pre-step messages untouched and only re-syncs the session primary', async () => {
+    const ctx = new Context()
+    ctx.provide('systemPrompt', { context: () => () => {} })
+    await ctx.plugin(WorkspaceDirectoriesProvider, {
+      defaultDirectories: [{ path: subDir, alias: 'sub-service' }],
+      enableContextInjection: false,
+    })
+
+    const claimed = [{ id: 'msg-1', content: [{ type: 'text', text: 'Hello' }], source: { kind: 'user' } }]
+    const agent = { session: { id: 'pre-step-session', header: { cwd: mainDir } } }
     const result = await ctx.waterfall('agent/pre-step', {
-      agent: mockAgent as any,
-      messages: originalMessages as any,
+      agent: agent as never,
+      messages: claimed as never,
       turn: 1,
       step: 1,
       signal: new AbortController().signal,
-    }, async () => ({
-      kind: 'enter',
-      messages: originalMessages as any,
-    }))
+    }, async () => ({ kind: 'enter', messages: claimed as never }))
 
     expect(result.kind).toBe('enter')
-    if (result.kind === 'enter') {
-      // Should have injected the workspace-directories message
-      expect(result.messages.length).toBe(2)
-      const contextMsg = result.messages[0]!
-      expect(contextMsg.source.kind).toBe('workspace-directories')
-      expect((contextMsg.content[0] as any).text).toContain('# Active Workspace Directories')
-      expect((contextMsg.content[0] as any).text).toContain('[sub-service]')
-    }
+    if (result.kind === 'enter') expect(result.messages).toEqual(claimed)
+    expect(ctx.addir.list('pre-step-session').some(entry => entry.path === mainDir)).toBe(true)
   })
 
   it('delegates permitted tool calls and disposes tool registrations', async () => {
