@@ -26,7 +26,8 @@ export interface Config {
   enableTools?: boolean
 
   /**
-   * Whether to inject Active Workspace Directories into the model's context before each turn.
+   * Whether to contribute the Active Workspace Directories table as runtime
+   * context. The agent loop re-sends it only when the table changes.
    * Default: true.
    */
   enableContextInjection?: boolean

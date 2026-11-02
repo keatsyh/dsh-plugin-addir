@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createWorkspaceDirectoriesMessage,
   formatWorkspaceDirectoriesPrompt,
-  isWorkspaceDirectoriesMessage,
+  WORKSPACE_DIRECTORIES_CONTEXT_NAME,
+  WORKSPACE_DIRECTORIES_CONTEXT_ORDER,
 } from '../src/context.ts'
 import type { LinkedDirectory } from '../src/types.ts'
 
@@ -36,8 +36,6 @@ describe('context injection', () => {
   it('returns empty prompt when only primary directory exists', () => {
     const prompt = formatWorkspaceDirectoriesPrompt([primaryDir])
     expect(prompt).toBe('')
-    const message = createWorkspaceDirectoriesMessage([primaryDir])
-    expect(message).toBeUndefined()
   })
 
   it('formats multi-directory markdown prompt correctly', () => {
@@ -49,13 +47,19 @@ describe('context injection', () => {
     expect(prompt).toContain('All file reading, searching, and execution tools accept paths located inside any of these directories.')
   })
 
-  it('creates and identifies user message', () => {
-    const message = createWorkspaceDirectoriesMessage([primaryDir, secondaryDir])
-    expect(message).toBeDefined()
-    if (!message) return
+  it('renders a stable prompt with the primary root first regardless of input order', () => {
+    const first = formatWorkspaceDirectoriesPrompt([secondaryDir, readOnlyDocs, primaryDir])
+    expect(first).toBe(formatWorkspaceDirectoriesPrompt([readOnlyDocs, primaryDir, secondaryDir]))
 
-    expect(isWorkspaceDirectoriesMessage(message)).toBe(true)
-    expect(message.source.kind).toBe('workspace-directories')
-    expect(message.content[0]?.type).toBe('text')
+    const bullets = first.split('\n').filter(line => line.startsWith('- ['))
+    expect(bullets[0]).toContain('[primary]')
+    expect(bullets.slice(1).map(line => line.slice(line.indexOf('['), line.indexOf(']') + 1)))
+      .toEqual(['[docs]', '[sub-service]'])
+  })
+
+  it('places the runtime-context contribution next to the working directory', () => {
+    expect(WORKSPACE_DIRECTORIES_CONTEXT_NAME).toBe('working-directories:linked')
+    expect(WORKSPACE_DIRECTORIES_CONTEXT_ORDER).toBeGreaterThan(100)
+    expect(WORKSPACE_DIRECTORIES_CONTEXT_ORDER).toBeLessThan(110)
   })
 })

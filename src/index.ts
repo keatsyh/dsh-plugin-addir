@@ -6,16 +6,17 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { Config, resolveConfig, type ConfigSchema } from './config.ts'
 import {
-  createWorkspaceDirectoriesMessage,
-  isWorkspaceDirectoriesMessage,
+  formatWorkspaceDirectoriesPrompt,
+  WORKSPACE_DIRECTORIES_CONTEXT_NAME,
+  WORKSPACE_DIRECTORIES_CONTEXT_ORDER,
 } from './context.ts'
 import { WorkspaceDirectoriesServiceImpl } from './service.ts'
 import { createAddTool, createListTool, createRemoveTool } from './tools.ts'
 import { registerAddirRoutes } from './api.ts'
-import type { AddDirectoryOptions, AddirService } from './types.ts'
+import type { AddDirectoryOptions, AddirService, LinkedDirectory } from './types.ts'
 
 export * from './config.ts'
 export * from './context.ts'
@@ -25,6 +26,26 @@ export * from './tools.ts'
 export * from './types.ts'
 
 export const name = 'dsh-plugin-addir'
+
+/**
+ * The `systemPrompt` registry surface this plugin contributes to. Declared
+ * locally because `@deepseek-ai/dsh-system-prompt` is a Host service this
+ * package only calls at runtime.
+ */
+interface PromptContextRegistry {
+  /**
+   * Register one dynamic runtime-context contribution.
+   * @param entry - name, placement, and the text provider evaluated per assembly.
+   * @returns the disposer of the registration.
+   */
+  context(entry: {
+    readonly name: string
+    readonly order: number
+    readonly text: (context: { readonly agent?: Agent }) => string
+    readonly interpolate?: boolean
+    readonly required?: boolean
+  }): () => void
+}
 
 /**
  * Service Provider wrapping WorkspaceDirectoriesServiceImpl for Cordis.
@@ -49,37 +70,35 @@ export class AddirProvider extends Service implements AddirService {
       })
     }
 
-    // Context injection: inject Active Workspace Directories into agent turns
+    // Context injection: one runtime-context contribution. The agent loop keeps
+    // a single directory snapshot and appends another only when this text
+    // changes, so a long turn cannot accumulate one copy per step.
     if (resolved.enableContextInjection) {
-      ctx.on('agent/pre-step', async ({ agent }, next): Promise<PreStepDecision> => {
-        const decision = await next()
-        if (decision.kind === 'reject') {
-          return decision
-        }
-
-        const sessionId = agent.session.id
-        // Infer nothing from the process working directory: on Desktop that is the Host's
-        // own profile directory, which is not a workspace.
-        const cwd = agent.session.header.cwd
-        if (cwd !== undefined) this.setPrimary(cwd, sessionId)
-
-        const dirs = this.list(sessionId)
-        const contextMsg = createWorkspaceDirectoriesMessage(dirs)
-
-        if (!contextMsg) {
-          return decision
-        }
-
-        // Check if an existing workspace-directories message is already in decision.messages
-        const filteredMessages = decision.messages.filter(m => !isWorkspaceDirectoriesMessage(m))
-
-        // Prepend context message right before turn messages
-        return {
-          ...decision,
-          messages: [contextMsg, ...filteredMessages],
-        }
+      ctx.inject(['systemPrompt'], (promptCtx) => {
+        const registry = promptCtx.get('systemPrompt') as PromptContextRegistry
+        promptCtx.effect(() => registry.context({
+          name: WORKSPACE_DIRECTORIES_CONTEXT_NAME,
+          order: WORKSPACE_DIRECTORIES_CONTEXT_ORDER,
+          // The table is operational context for every file tool, so it survives
+          // deployments that suppress optional runtime context.
+          required: true,
+          interpolate: false,
+          text: (context) => {
+            const agent = context.agent
+            if (agent === undefined) return ''
+            return formatWorkspaceDirectoriesPrompt(this.directoriesFor(agent))
+          },
+        }))
       })
     }
+
+    // Tools and the read-only guard resolve one Session's directories, so the
+    // primary follows that Session's cwd even when context injection is off.
+    // Re-syncing an unchanged cwd reads no storage.
+    ctx.on('agent/pre-step', async ({ agent }, next): Promise<PreStepDecision> => {
+      this.syncPrimary(agent)
+      return next()
+    })
 
     // Protection guard: intercept write attempts on read-only directories
     if (resolved.enforceReadOnly) {
@@ -102,6 +121,20 @@ export class AddirProvider extends Service implements AddirService {
 
     // Register Web API routes
     registerAddirRoutes(ctx, this.impl, resolved)
+  }
+
+  /** Mirror a Session's cwd into the directory state; an unchanged cwd reads no storage. */
+  private syncPrimary(agent: Agent): void {
+    // Infer nothing from the process working directory: on Desktop that is the Host's
+    // own profile directory, which is not a workspace.
+    const cwd = agent.session.header.cwd
+    if (cwd !== undefined) this.setPrimary(cwd, agent.session.id)
+  }
+
+  /** The directories whose table the model should receive for one Agent. */
+  private directoriesFor(agent: Agent): readonly LinkedDirectory[] {
+    this.syncPrimary(agent)
+    return this.list(agent.session.id)
   }
 
   list(sessionId?: string) {
